@@ -48,7 +48,7 @@ def make_feature_and_branch_name():
     branch_name = f'submit-feature-{my_id}'
 
     underscore_id = my_id.replace('-', '_')
-    feature_name = f'feature_{underscore_id}'
+    feature_name = underscore_id
     return feature_name, branch_name
 
 
@@ -57,16 +57,21 @@ def get_new_feature_path(changes):
     for (name, kind) in changes:
         if kind == 'file' and '__init__' not in str(name):
             relname = pathlib.Path(name).relative_to(cwd)
-            abspath = cwd.joinpath(relname)
-            return abspath
+            return relname
     return None
 
 
+def is_debug():
+    return truthy(getenv('DEBUG', default='false'))
+
+
 def create_pull_request_for_code_content(code_content):
-    if truthy(getenv('DEBUG', default='false')):
+    if is_debug():
         return 'http://some/testing/url'
 
     with tempfile.TemporaryDirectory() as dirname:
+        dirname = str(pathlib.Path(dirname).resolve())
+
         # clone directory to dir
         with stacklog(app.logger.info, 'Cloning repo'):
             repo = git.Repo.clone_from(REPO_URL, to_path=dirname)
