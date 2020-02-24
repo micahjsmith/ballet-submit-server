@@ -13,6 +13,7 @@ ballet = "*"
 funcy = "*"
 gunicorn = "*"
 pygithub = "*"
+stacklog = "*"
 
 [requires]
 python_version = "3.7"
