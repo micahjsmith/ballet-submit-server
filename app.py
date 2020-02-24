@@ -1,3 +1,4 @@
+import logging
 import pathlib
 import tempfile
 import uuid
@@ -13,9 +14,13 @@ from cookiecutter.utils import work_in
 from flask import Flask, request
 from flask_cors import CORS
 from github import Github
+from stacklog import stacklog
 
 app = Flask(__name__)
 CORS(app)
+
+
+app.logger.setLevel(logging.INFO)
 
 
 USERNAME = 'ballet-demo-user-1'
@@ -63,60 +68,70 @@ def create_pull_request_for_code_content(code_content):
 
     with tempfile.TemporaryDirectory() as dirname:
         # clone directory to dir
-        repo = git.Repo.clone_from(REPO_URL, to_path=dirname)
+        with stacklog(app.logger.info, 'Cloning repo'):
+            repo = git.Repo.clone_from(REPO_URL, to_path=dirname)
 
         with work_in(dirname):
             # configure repo
-            set_config_variables(repo, {
-                'user.name': 'Demo1',
-                'user.email': 'ballet-demo-user-1@mit.edu',
-            })
-            repo.remote().set_url(REPO_URL)
+            with stacklog(app.logger.info, 'Configuring repo'):
+                set_config_variables(repo, {
+                    'user.name': 'Demo1',
+                    'user.email': 'ballet-demo-user-1@mit.edu',
+                })
+                repo.remote().set_url(REPO_URL)
 
             # create a new branch
-            feature_name, branch_name = make_feature_and_branch_name()
-            repo.create_head(branch_name)
+            with stacklog(app.logger.info, 'Creating new branch and checking it out'):
+                feature_name, branch_name = make_feature_and_branch_name()
+                repo.create_head(branch_name)
+                repo.heads[branch_name].checkout()
 
             # start new feature
-            extra_context = {
-                'username': f'user_{USERNAME}',
-                'featurename': feature_name,
-            }
-            changes = ballet.templating.start_new_feature(no_input=True, extra_context=extra_context)
-            changed_files = [
-                name
-                for (name, kind) in changes
-                if kind == 'file'
-            ]
-            new_feature_path = get_new_feature_path(changes)
+            with stacklog(app.logger.info, 'Starting new feature'):
+                extra_context = {
+                    'username': USERNAME,
+                    'featurename': feature_name,
+                }
+                changes = ballet.templating.start_new_feature(no_input=True, extra_context=extra_context)
+                changed_files = [
+                    str(pathlib.Path(name).relative_to(dirname))
+                    for (name, kind) in changes
+                    if kind == 'file'
+                ]
+                new_feature_path = get_new_feature_path(changes)
 
             # add code content to path
-            with open(new_feature_path, 'w') as f:
-                blackened_code_content = blacken_code(code_content)
-                f.write(blackened_code_content)
+            with stacklog(app.logger.info, 'Adding code content'):
+                with open(new_feature_path, 'w') as f:
+                    blackened_code_content = blacken_code(code_content)
+                    f.write(blackened_code_content)
 
             # commit new code
-            repo.index.add(changed_files)
-            repo.index.commit('Add new feature')
+            with stacklog(app.logger.info, 'Committing new feature'):
+                repo.index.add(changed_files)
+                repo.index.commit('Add new feature')
 
             # push to branch
-            refspec = f'refs/heads/{branch_name}:refs/heads/{branch_name}'
-            repo.remote().push(refspec=refspec)
+            with stacklog(app.logger.info, 'Pushing to remote'):
+                refspec = f'refs/heads/{branch_name}:refs/heads/{branch_name}'
+                repo.remote().push(refspec=refspec)
 
             # create pull request
-            github = Github(PASSWORD)
-            grepo = github.get_repo(UPSTREAM_REPO_SPEC)
-            title = 'Propose new feature'
-            body = dedent(f'''\
-                Propose new feature: {feature_name}
-                Submitted by user: {USERNAME}
+            with stacklog(app.logger.info, 'Creating pull request'):
+                github = Github(PASSWORD)
+                grepo = github.get_repo(UPSTREAM_REPO_SPEC)
+                title = 'Propose new feature'
+                body = dedent(f'''\
+                    Propose new feature: {feature_name}
+                    Submitted by user: {USERNAME}
 
-                --
-                Pull request automatically created by ballet-submit-server
-            ''')
-            base = 'master'
-            head = f'{USERNAME}:{branch_name}'
-            maintainer_can_modify = True
-            pr = grepo.create_pull(title=title, body=body, base=base, head=head,
-                                   maintainer_can_modify=maintainer_can_modify)
-            return pr.url
+                    --
+                    Pull request automatically created by ballet-submit-server
+                ''')
+                base = 'master'
+                head = f'{USERNAME}:{branch_name}'
+                maintainer_can_modify = True
+                app.logger.debug(f'About to create pull: title={title}, body={body}, base={base}, head={head}')
+                pr = grepo.create_pull(title=title, body=body, base=base, head=head,
+                                       maintainer_can_modify=maintainer_can_modify)
+                return pr.html_url
