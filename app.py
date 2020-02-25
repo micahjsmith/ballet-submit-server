@@ -8,13 +8,15 @@ from textwrap import dedent
 import ballet.templating
 import git
 from ballet.util import truthy
-from ballet.util.code import blacken_code
+from ballet.util.code import blacken_code, is_valid_python
 from ballet.util.git import set_config_variables
 from cookiecutter.utils import work_in
-from flask import Flask, request
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from github import Github
 from stacklog import stacklog
+
+__version__ = '0.1.0'
 
 app = Flask(__name__)
 CORS(app)
@@ -39,8 +41,8 @@ def status():
 def submit():
     data = request.json
     code_content = data['codeContent']
-    pr_url = create_pull_request_for_code_content(code_content)
-    return pr_url
+    result = create_pull_request_for_code_content(code_content)
+    return jsonify(result)
 
 
 def make_feature_and_branch_name():
@@ -66,8 +68,14 @@ def is_debug():
 
 
 def create_pull_request_for_code_content(code_content):
-    if is_debug():
-        return 'http://some/testing/url'
+
+    with stacklog(app.logger.info, 'Checking for valid code'):
+        if not is_valid_python(code_content):
+            return {
+                'result': False,
+                'url': None,
+                'message': 'Submitted code is not valid Python code',
+            }
 
     with tempfile.TemporaryDirectory() as dirname:
         dirname = str(pathlib.Path(dirname).resolve())
@@ -119,7 +127,8 @@ def create_pull_request_for_code_content(code_content):
             # push to branch
             with stacklog(app.logger.info, 'Pushing to remote'):
                 refspec = f'refs/heads/{branch_name}:refs/heads/{branch_name}'
-                repo.remote().push(refspec=refspec)
+                if not is_debug():
+                    repo.remote().push(refspec=refspec)
 
             # create pull request
             with stacklog(app.logger.info, 'Creating pull request'):
@@ -137,6 +146,18 @@ def create_pull_request_for_code_content(code_content):
                 head = f'{USERNAME}:{branch_name}'
                 maintainer_can_modify = True
                 app.logger.debug(f'About to create pull: title={title}, body={body}, base={base}, head={head}')
-                pr = grepo.create_pull(title=title, body=body, base=base, head=head,
-                                       maintainer_can_modify=maintainer_can_modify)
-                return pr.html_url
+                if not is_debug():
+                    pr = grepo.create_pull(title=title, body=body, base=base, head=head,
+                                           maintainer_can_modify=maintainer_can_modify)
+                    return {
+                        'result': True,
+                        'url': pr.html_url,
+                        'message': None,
+                    }
+
+            if is_debug():
+                return {
+                    'result': True,
+                    'url': 'http://some/testing/url',
+                    'message': None,
+                }
