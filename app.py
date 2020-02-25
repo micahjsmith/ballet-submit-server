@@ -94,7 +94,7 @@ def create_pull_request_for_code_content(code_content):
             # start new feature
             with stacklog(app.logger.info, 'Starting new feature'):
                 extra_context = {
-                    'username': USERNAME,
+                    'username': USERNAME.replace('-', '_'),
                     'featurename': feature_name,
                 }
                 changes = ballet.templating.start_new_feature(no_input=True, extra_context=extra_context)
