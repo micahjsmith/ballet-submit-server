@@ -39,11 +39,11 @@
         },
         "ballet": {
             "hashes": [
-                "sha256:50137b5e4ee83127aa5cf239f043fd58ed1c5a2fdbd0224a09c77aeb77759020",
-                "sha256:e3d6a368b9a9f2b04f74fbfd95d532507a11294c9ea55792843e3161ffdde72e"
+                "sha256:1e536de401341f61884b598c09e2773418d701526483ed801a7ab9c0e394eb62",
+                "sha256:40d41c8bb000d4b86ba076c3d58026a2bbe01e134af2dcd493f78178056a0271"
             ],
             "index": "pypi",
-            "version": "==0.6.7"
+            "version": "==0.6.8"
         },
         "binaryornot": {
             "hashes": [
